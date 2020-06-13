@@ -5,7 +5,9 @@
 #include <cstdlib>
 
 #include "MPU6886.h"
-#include "RotorIy.h"
+#include "rotor.h"
+
+#include "neopixel.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -90,7 +92,7 @@ esp_err_t _I2CWrite1(uint8_t addr, uint8_t reg, uint8_t val)
 
 // For gyro
 // 5 second
-#define IN_CALIB 5000
+#define IN_CALIB 10000
 #define CALIB_ALPHA 0.002f
 
 #define FILTER_CONVERGE_COUNT 10000
@@ -110,9 +112,8 @@ void imu_task(void *arg)
 
     IMU.Init();
     
-    RotorIyBV RIBV (0.01, 1.0e-3, 1.0e-6);
-    //float c, si, sj, sk;
-    float bc, bsi, bsj, bsk;
+    RotorIyVS RI (0.01, 1.0e-3, 1.0e-6);
+    float c, si, sj, sk;
 
     for (;;) {
       IMU.getAccelData(&ax, &ay, &az);
@@ -132,16 +133,82 @@ void imu_task(void *arg)
 	    }
 
 	  gx -= gx_offs; gy -= gy_offs; gz -= gz_offs;
-	  RIBV.UpdateIMU (gx, gy, gz, ax, ay, az, bc, bsi, bsj, bsk);
-      RIBV.Show ();
+      //printf("ax: %f ay: %f az: %f\n", ax, ay, az);
+      //printf("gx: %f gy: %f gz: %f\n", gx, gy, gz);
+      // Convert NED frame into the normal frame.
+      // Since gz will be used as the coefficient of bivector
+                  // e1^e2 e1 <-> e2 makes the of gz minus.
+      float oi, oj, ok;
+      RI.Update (gy, gx, -gz, -ay, -ax, az,
+                 c, si, sj, sk, oi, oj, ok);
+      RI.Show ();
       count++;
+    }
+}
+
+#define NEOPIXEL_PORT					27
+#define NR_LED							25
+#define NEOPIXEL_RMT_CHANNEL            RMT_CHANNEL_0
+
+void led_task(void *arg)
+{
+    pixel_settings_t px;
+    uint32_t pixels[NR_LED];
+    int i;
+    int rc;
+
+    rc = neopixel_init(NEOPIXEL_PORT, NEOPIXEL_RMT_CHANNEL);
+    printf("neopixel_init rc = %d", rc);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    for (i = 0; i < NR_LED; i++) {
+        pixels[i] = 0;
+    }
+    px.pixels = (uint8_t *)pixels;
+    px.pixel_count = NR_LED;
+    strcpy(px.color_order, "GRB");
+
+    memset(&px.timings, 0, sizeof(px.timings));
+    px.timings.mark.level0 = 1;
+    px.timings.space.level0 = 1;
+    px.timings.mark.duration0 = 12;
+    px.nbits = 24;
+    px.timings.mark.duration1 = 14;
+    px.timings.space.duration0 = 7;
+    px.timings.space.duration1 = 16;
+    px.timings.reset.duration0 = 600;
+    px.timings.reset.duration1 = 600;
+
+    px.brightness = 0x10;
+    np_show(&px, NEOPIXEL_RMT_CHANNEL);
+    
+    int fact = 1;
+    while (true) {
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        //ESP_LOGE("main", "fact = %d", fact);
+        for (int j = 0; j < NR_LED; j++) {
+            np_set_pixel_rgbw(&px, j , i, i, i, i);
+        }
+        np_show(&px, NEOPIXEL_RMT_CHANNEL);
+        if (fact > 0) {
+            i += 1;
+        } else {
+            i -= 1;
+        }
+        if (i == 255) {
+            fact = -1;
+        } else if ( i == 0 ) {
+            fact = 1;
+        }
     }
 }
 
 extern "C" void app_main()
 {
     xTaskCreate(imu_task, "imu_task", 8192, NULL, 1, NULL);
+    xTaskCreate(led_task, "led_task", 8192, NULL, 2, NULL);
 
+#if 1
     gpio_set_direction(GPIO_NUM_22, GPIO_MODE_OUTPUT);
     int level = 0;
     while (true) {
@@ -149,4 +216,5 @@ extern "C" void app_main()
         level = !level;
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+#endif
 }
