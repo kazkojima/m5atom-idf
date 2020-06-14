@@ -61,11 +61,12 @@ int MPU6886::Init(void){
   I2C_Write_NBytes(MPU6886_ADDRESS, MPU6886_CONFIG, 1, &regdata);
   delay(1);
 
-  regdata = 0x05;
+  // 200Hz
+  regdata = 0x04;
   I2C_Write_NBytes(MPU6886_ADDRESS, MPU6886_SMPLRT_DIV, 1,&regdata);
   delay(1);
 
-  regdata = 0x00;
+  regdata = 0x01;
   I2C_Write_NBytes(MPU6886_ADDRESS, MPU6886_INT_ENABLE, 1, &regdata);
   delay(1);
 
@@ -123,22 +124,32 @@ void MPU6886::getTempAdc(int16_t *t){
   *t=((uint16_t)buf[0]<<8)|buf[1];  
 }
 
+bool MPU6886::dataReady(void)
+{
+  uint8_t buf[1];  
+  I2C_Read_NBytes(MPU6886_ADDRESS, MPU6886_INT_STATUS, 1, buf);
+  return (buf[0] & 1);
+}
+
+// gyro as 16.4 LSB/DPS at scale factor of +/- 2000dps
+static const float GYRO_SCALE = 0.0174532f / 16.4f;
+
 void MPU6886::getGres(){
 
    switch (Gyscale)
    {
   // Possible gyro scales (and their register bit settings) are:
      case GFS_250DPS:
-           gRes = 250.0/32768.0;
+           gRes = GYRO_SCALE/8.0f;
            break;
      case GFS_500DPS:
-           gRes = 500.0/32768.0;
+           gRes = GYRO_SCALE/4.0f;
            break;
      case GFS_1000DPS:
-           gRes = 1000.0/32768.0;
+           gRes = GYRO_SCALE/2.0f;
            break;
      case GFS_2000DPS:
-           gRes = 2000.0/32768.0;
+           gRes = GYRO_SCALE;
            break;
    }
 }
@@ -163,7 +174,7 @@ void MPU6886::getAres(){
           break;
   }
 }
- 
+
 void MPU6886::SetGyroFsr(Gscale scale)
 {
     unsigned char regdata;	

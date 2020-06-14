@@ -88,14 +88,19 @@ esp_err_t _I2CWrite1(uint8_t addr, uint8_t reg, uint8_t val)
     return ret;
 }
 
+// This sample application displays AHRS result with setting pure
+// quaternion components to RGB values.
+// When button pushed, led displays "heart beat".
+
+int button_level;
+uint8_t led_r, led_g, led_b;
+
 #define GRAVITY_MSS     9.80665f
 
 // For gyro
-// 5 second
-#define IN_CALIB 10000
+// 10 second
+#define IN_CALIB 2000
 #define CALIB_ALPHA 0.002f
-
-#define FILTER_CONVERGE_COUNT 10000
 
 void imu_task(void *arg)
 {
@@ -111,38 +116,51 @@ void imu_task(void *arg)
     MPU6886 IMU;
 
     IMU.Init();
-    
-    RotorIyVS RI (0.01, 1.0e-3, 1.0e-6);
+
+    // Sample rate 200Hz. RI is updated in every 5ms.
+    RotorIyVS RI (0.01, 5.0e-3, 1.0e-6);
     float c, si, sj, sk;
 
     for (;;) {
-      IMU.getAccelData(&ax, &ay, &az);
-      IMU.getGyroData(&gx, &gy, &gz);
-      ax *= GRAVITY_MSS;
-      ay *= GRAVITY_MSS;
-      az *= GRAVITY_MSS;
-      //printf("ax: %f ay: %f az: %f\n", ax, ay, az);
-      //printf("gx: %f gy: %f gz: %f\n", gx, gy, gz);
-	  // gyro offset calibration needed
-	  if (count < IN_CALIB) {
-	      gx_offs = (1-CALIB_ALPHA)*gx_offs + CALIB_ALPHA*gx;
-	      gy_offs = (1-CALIB_ALPHA)*gy_offs + CALIB_ALPHA*gy;
-	      gz_offs = (1-CALIB_ALPHA)*gz_offs + CALIB_ALPHA*gz;
-	      count++;
-	      continue;
+        if (!IMU.dataReady()) {
+            vTaskDelay(1/portTICK_PERIOD_MS);
+            continue;
+        }
+        IMU.getAccelData(&ax, &ay, &az);
+        IMU.getGyroData(&gx, &gy, &gz);
+        ax *= GRAVITY_MSS;
+        ay *= GRAVITY_MSS;
+        az *= GRAVITY_MSS;
+        //printf("ax: %f ay: %f az: %f\n", ax, ay, az);
+        //printf("gx: %f gy: %f gz: %f\n", gx, gy, gz);
+
+        // simple gyro offset calibration
+        if (count < IN_CALIB) {
+            gx_offs = (1-CALIB_ALPHA)*gx_offs + CALIB_ALPHA*gx;
+            gy_offs = (1-CALIB_ALPHA)*gy_offs + CALIB_ALPHA*gy;
+            gz_offs = (1-CALIB_ALPHA)*gz_offs + CALIB_ALPHA*gz;
+            count++;
+            continue;
 	    }
 
-	  gx -= gx_offs; gy -= gy_offs; gz -= gz_offs;
-      //printf("ax: %f ay: %f az: %f\n", ax, ay, az);
-      //printf("gx: %f gy: %f gz: %f\n", gx, gy, gz);
-      // Convert NED frame into the normal frame.
-      // Since gz will be used as the coefficient of bivector
-                  // e1^e2 e1 <-> e2 makes the of gz minus.
-      float oi, oj, ok;
-      RI.Update (gy, gx, -gz, -ay, -ax, az,
-                 c, si, sj, sk, oi, oj, ok);
-      RI.Show ();
-      count++;
+        gx -= gx_offs; gy -= gy_offs; gz -= gz_offs;
+        //printf("ax: %f ay: %f az: %f\n", ax, ay, az);
+        //printf("gx: %f gy: %f gz: %f\n", gx, gy, gz);
+
+        // Convert NED frame into the normal frame.
+        // Since gz will be used as the coefficient of bivector
+        // e1^e2, e1 <-> e2 reverses the sign of gz.
+        float oi, oj, ok;
+        RI.Update (gy, gx, -gz, -ay, -ax, az,
+                   c, si, sj, sk, oi, oj, ok);
+        printf("%4.2f ", (float)(count - IN_CALIB)/200);
+        RI.Show ();
+
+        led_r = (uint8_t)(255 * abs(si));
+        led_g = (uint8_t)(255 * abs(sj));
+        led_b = (uint8_t)(255 * abs(sk));
+        
+        count++;
     }
 }
 
@@ -185,9 +203,18 @@ void led_task(void *arg)
     int fact = 1;
     while (true) {
         vTaskDelay(10 / portTICK_PERIOD_MS);
-        //ESP_LOGE("main", "fact = %d", fact);
+
+        if (button_level) {
+            for (int j = 0; j < NR_LED; j++) {
+                np_set_pixel_rgbw(&px, j, led_r, led_g, led_b, 0);
+            }
+            np_show(&px, NEOPIXEL_RMT_CHANNEL);
+            continue;
+        }
+
+        // tirangle wave
         for (int j = 0; j < NR_LED; j++) {
-            np_set_pixel_rgbw(&px, j , i, i, i, i);
+            np_set_pixel_rgbw(&px, j, i, i, i, 0);
         }
         np_show(&px, NEOPIXEL_RMT_CHANNEL);
         if (fact > 0) {
@@ -203,18 +230,16 @@ void led_task(void *arg)
     }
 }
 
+#define BUTTON_PIN GPIO_NUM_39
+
 extern "C" void app_main()
 {
     xTaskCreate(imu_task, "imu_task", 8192, NULL, 1, NULL);
     xTaskCreate(led_task, "led_task", 8192, NULL, 2, NULL);
 
-#if 1
-    gpio_set_direction(GPIO_NUM_22, GPIO_MODE_OUTPUT);
-    int level = 0;
+    gpio_set_direction(BUTTON_PIN, GPIO_MODE_INPUT);
     while (true) {
-        gpio_set_level(GPIO_NUM_22, level);
-        level = !level;
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        button_level = gpio_get_level(BUTTON_PIN);
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
-#endif
 }

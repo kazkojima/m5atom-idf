@@ -14,6 +14,7 @@
 #define MPU6886_SMPLRT_DIV        0x19
 #define MPU6886_INT_PIN_CFG       0x37
 #define MPU6886_INT_ENABLE        0x38
+#define MPU6886_INT_STATUS        0x3A
 #define MPU6886_ACCEL_XOUT_H      0x3B
 #define MPU6886_ACCEL_XOUT_L      0x3C
 #define MPU6886_ACCEL_YOUT_H      0x3D
@@ -70,6 +71,7 @@ class MPU6886 {
       void getGyroAdc(int16_t* gx, int16_t* gy, int16_t* gz);
       void getTempAdc(int16_t *t);
 
+      bool dataReady();
       void getAccelData(float* ax, float* ay, float* az);
       void getGyroData(float* gx, float* gy, float* gz);
       void getTempData(float *t);

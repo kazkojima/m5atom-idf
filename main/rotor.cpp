@@ -18,7 +18,8 @@
 #include <cstdint>
 #include <cstdio>
 
-//#define USE_3RD_ORDER_INTERPORATION 1
+#define USE_3RD_ORDER_INTERPORATION 1
+//#define USE_TRAPEZOIDAL_INTERPORATION 1
 #include "rotor.h"
 
 /*
@@ -48,10 +49,24 @@ RotorIy::~RotorIy ()
 {
 }
 
+// v = S*(-e3)/S
+// -2 q0 q2 - 2 q1 q3, 2 q0 q1 - 2 q2 q3, -q0^2 + q1^2 + q2^2 - q3^2
+inline static void
+apply_me3 (float c, float si, float sj, float sk,
+	   float& vx, float& vy, float& vz)
+{
+  vx = -2*c*sj - 2*si*sk;
+  vy =  2*c*si - 2*sj*sk;
+  vz = -c*c + si*si + sj*sj - sk*sk;
+}
+
 void
 RotorIy::Show (void)
 {
-  printf ("S=%2.6f %2.6f %2.6f %2.6f\n", m_S0, m_Si, m_Sj, m_Sk);
+  printf ("S=%2.3f %2.3f %2.3f %2.3f\n", m_S0, m_Si, m_Sj, m_Sk);
+  //float vx, vy, vz;
+  //apply_me3 (m_S0, m_Si, m_Sj, m_Sk, vx, vy, vz);
+  //printf ("%2.6f %2.6f %2.6f\n", vx, vy, vz);
 }
 
 /*
@@ -173,17 +188,6 @@ comm (const float a, const float b, const float c,
   z = -a*e + b*d;
 }
 #endif
-
-// v = S*(-e3)/S
-// -2 q0 q2 - 2 q1 q3, 2 q0 q1 - 2 q2 q3, -q0^2 + q1^2 + q2^2 - q3^2
-inline static void
-apply_me3 (float c, float si, float sj, float sk,
-	   float& vx, float& vy, float& vz)
-{
-  vx = -2*c*sj - 2*si*sk;
-  vy =  2*c*si - 2*sj*sk;
-  vz = -c*c + si*si + sj*sj - sk*sk;
-}
 
 void
 RotorIyVS::Update (float gi, float gj, float gk,
