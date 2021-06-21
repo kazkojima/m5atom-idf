@@ -33,6 +33,7 @@
 
 #include "neopixel.h"
 #include <esp_log.h>
+#include <freertos/semphr.h>
 
 static xSemaphoreHandle neopixel_sem = NULL;
 static intr_handle_t rmt_intr_handle = NULL;
