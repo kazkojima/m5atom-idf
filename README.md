@@ -7,3 +7,9 @@ For LEDs, [NeoPixel LED driver for ESP-IDF](https://github.com/ogochan/neopixel-
 
 It displays AHRS result with setting pure quaternion components to RGB values.
 When button pushed, led displays "heart beat".
+
+### ChangeLog
+
+[2021 Jun 22] Adjust for ESP-IDF 4.4.
+
+[2020 Jun 12] Initial commit.
